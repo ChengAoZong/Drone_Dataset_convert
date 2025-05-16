@@ -8,6 +8,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_root', type=str, required=True,
                         help='Path to dataset root containing Videos/ and Video_Annotation/')
+    parser.add_argument('--save_root', type=str, required=True,
+                        help='Path to the datasets directory')
     parser.add_argument('--save_vis', action='store_true',
                         help='Enable visualization using OpenCV')
     return parser.parse_args()
@@ -32,7 +34,7 @@ def parse_txt_line(line):
     boxes = [tuple(map(int, bbox)) for bbox in bboxes]
     return frame_id, boxes
 
-def convert_clip(txt_path, video_path, label_dir, save_vis=False):
+def convert_clip(txt_path, video_path, image_save_path, labels_save_path, save_vis=False):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"⚠️ Unable to open video: {video_path}")
@@ -50,7 +52,6 @@ def convert_clip(txt_path, video_path, label_dir, save_vis=False):
             if frame_id is not None:
                 annotations.setdefault(frame_id, []).extend(boxes)
 
-    os.makedirs(label_dir, exist_ok=True)
     frame_idx = 0
     video_name = os.path.splitext(os.path.basename(txt_path))[0].replace('_gt', '')
 
@@ -69,14 +70,18 @@ def convert_clip(txt_path, video_path, label_dir, save_vis=False):
                 yolo_lines.append(yolo_line)
 
                 if save_vis:
-                    xmin, ymin, xmax, ymax = bbox
+                    ymin, xmin , ymax, xmax = bbox
                     cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 255, 0), 2)
 
         # 写入 YOLO 标签
         txt_name = f"{video_name}_frame{frame_id:04d}.txt"
-        txt_output_path = os.path.join(label_dir, txt_name)
+        txt_output_path = os.path.join(labels_save_path, txt_name)
         with open(txt_output_path, 'w') as f:
             f.write('\n'.join(yolo_lines))
+
+        # 保存图片
+        image_name = os.path.join(image_save_path, txt_name.replace('.txt', '.jpg'))
+        cv2.imwrite(image_name, frame)
 
         if save_vis and yolo_lines:
             cv2.imshow("YOLO Visualization", frame)
@@ -90,11 +95,14 @@ def convert_clip(txt_path, video_path, label_dir, save_vis=False):
         cv2.destroyAllWindows()
     pbar.close()
 
-def convert_all(data_root, save_vis=False):
+def convert_all(data_root, save_root, dataset_name, save_vis=False):
     video_dir = os.path.join(data_root, 'Videos')
     anno_dir = os.path.join(data_root, 'Video_Annotation')
-    label_dir = os.path.join(data_root, 'yolo_labels')
-    os.makedirs(label_dir, exist_ok=True)
+    # label_dir = os.path.join(data_root, 'yolo_labels')
+    images_save_path = os.path.join(save_root, dataset_name, 'images')
+    labels_save_path = os.path.join(save_root, dataset_name, 'labels')
+    os.makedirs(images_save_path, exist_ok=True)
+    os.makedirs(labels_save_path, exist_ok=True)
 
     txt_files = [f for f in os.listdir(anno_dir) if f.endswith('_gt.txt')]
 
@@ -107,11 +115,11 @@ def convert_all(data_root, save_vis=False):
             print(f"⚠️ Missing video: {video_path}")
             continue
 
-        convert_clip(txt_path, video_path, label_dir, save_vis=save_vis)
+        convert_clip(txt_path, video_path, images_save_path, labels_save_path, save_vis=save_vis)
 
 def main():
     args = parse_args()
-    convert_all(args.data_root, save_vis=args.save_vis)
+    convert_all(args.data_root, args.save_root, dataset_name="NPS", save_vis=args.save_vis)
 
 if __name__ == '__main__':
     main()
